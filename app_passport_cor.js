@@ -1,109 +1,150 @@
 var express = require('express');
-var app = express();
-var md5 = require('md5');
 var session = require('express-session');
-var body_parser = require('body-parser');
+var FileStore = require('session-file-store')(session);
+var bodyParser = require('body-parser');
+var bkfd2Password = require("pbkdf2-password");
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
+var hasher = bkfd2Password();
 
-
-app.use(body_parser.urlencoded({extended: false}));
+var app = express();
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use(session({
-  secret: 'SAF@$aff#$aGAJasfoqFJSOAe3F$#dahf',
+  secret: '1234DSFs@adf1234!@#$asd',
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: true,
+  store:new FileStore()
 }));
 app.use(passport.initialize());
 app.use(passport.session());
-//session을 passport에서 사용할 수 있어야 하므로, 기본적인 session 설정이 완료되어야 한다
 app.get('/count', function(req, res){
-
-  if(req.session.count){
+  if(req.session.count) {
     req.session.count++;
   } else {
     req.session.count = 1;
   }
-  res.send('hi, session');
+  res.send('count : '+req.session.count);
 });
-
-app.get('/tmp', function(req, res){
-  res.send('result:' + req.session.count);
-});
-
-app.get('/auth/logout', function(req,res){
+app.get('/auth/logout', function(req, res){
   delete req.session.displayName;
   res.redirect('/welcome');
 });
-
 app.get('/welcome', function(req, res){
   if(req.session.displayName) {
     res.send(`
       <h1>Hello, ${req.session.displayName}</h1>
       <a href="/auth/logout">logout</a>
-      `);
+    `);
   } else {
     res.send(`
-        <h1>Welcome</h1>
-        <ul>
-          <li><a href="/auth/login">Login</a></li>
-          <li><a href="/auth/register">Register</a></li>
-        </ul>
-      `);
+      <h1>Welcome</h1>
+      <ul>
+        <li><a href="/auth/login">Login</a></li>
+        <li><a href="/auth/register">Register</a></li>
+      </ul>
+    `);
   }
 });
-
-app.get('/auth/register', function(req, res){
-  var output = `
-    <h1>Register</h1>
-    <form action="/auth/register" method="post">
-      <p>
-        <input type="text", name="username", placeholder="username">
-      </p>
-      <p>
-        <input type="password", name="password", placeholder="password">
-      </p>
-      <p>
-        <input type="text", name="displayName", placeholder="nick-name">
-      </p>
-      <p>
-        <input type="submit">
-      </p>
-    </form>
-  `
-  res.send(output);
+passport.serializeUser(function(user, done) {
+  console.log('serializeUser', user);
+  done(null, user.username);
 });
 
-app.post('/auth/register', function(req, res){
-  var user = {
-    username:req.body.username,
-    password:req.body.password,
-    displayName:req.body.displayName
-  };
-  users.push(user);
-  //res.send('registered!');
-  req.session.displayName = user.displayName;
-  res.redirect('/welcome');
-})
-
+passport.deserializeUser(function(id, done) {
+  console.log('deserializeUser', id);
+  for(var i=0; i<users.length; i++){
+    var user = users[i];
+    if(user.username === id){
+      return done(null, user);
+    }
+  }
+});
+passport.use(new LocalStrategy(
+  function(username, password, done){
+    var uname = username;
+    var pwd = password;
+    for(var i=0; i<users.length; i++){
+      var user = users[i];
+      if(uname === user.username) {
+        return hasher({password:pwd, salt:user.salt}, function(err, pass, salt, hash){
+          if(hash === user.password){
+            console.log('LocalStrategy', user);
+            done(null, user);
+          } else {
+            done(null, false);
+          }
+        });
+      }
+    }
+    done(null, false);
+  }
+));
+app.post(
+  '/auth/login',
+  passport.authenticate(
+    'local',
+    {
+      successRedirect: '/welcome',
+      failureRedirect: '/auth/login',
+      failureFlash: false
+    }
+  )
+);
+// app.post('/auth/login', function(req, res){
+//   var uname = req.body.username;
+//   var pwd = req.body.password;
+//   for(var i=0; i<users.length; i++){
+//     var user = users[i];
+//     if(uname === user.username) {
+//       return hasher({password:pwd, salt:user.salt}, function(err, pass, salt, hash){
+//         if(hash === user.password){
+//           req.session.displayName = user.displayName;
+//           req.session.save(function(){
+//             res.redirect('/welcome');
+//           })
+//         } else {
+//           res.send('Who are you? <a href="/auth/login">login</a>');
+//         }
+//       });
+//     }
+//   }
+//   res.send('Who are you? 2<a href="/auth/login">login</a>');
+// });
 var users = [
   {
-    username:'inkp',
-    password:'202cb962ac59075b964b07152d234b70',
-    displayName:'kyu'
+    username:'egoing',
+    password:'mTi+/qIi9s5ZFRPDxJLY8yAhlLnWTgYZNXfXlQ32e1u/hZePhlq41NkRfffEV+T92TGTlfxEitFZ98QhzofzFHLneWMWiEekxHD1qMrTH1CWY01NbngaAfgfveJPRivhLxLD1iJajwGmYAXhr69VrN2CWkVD+aS1wKbZd94bcaE=',
+    salt:'O0iC9xqMBUVl3BdO50+JWkpvVcA5g2VNaYTR5Hc45g+/iXy4PzcCI7GJN5h5r3aLxIhgMN8HSh0DhyqwAp8lLw==',
+    displayName:'Egoing'
   }
 ];
-
-
-
-app.get('/auth/login', function(req,res){
+app.post('/auth/register', function(req, res){
+  hasher({password:req.body.password}, function(err, pass, salt, hash){
+    var user = {
+      username:req.body.username,
+      password:hash,
+      salt:salt,
+      displayName:req.body.displayName
+    };
+    users.push(user);
+    req.session.displayName = req.body.displayName;
+    req.session.save(function(){
+      res.redirect('/welcome');
+    });
+  });
+});
+app.get('/auth/register', function(req, res){
   var output = `
-  <h1>Login</h1>
-  <form action="/auth/login" method="post">
+  <h1>Register</h1>
+  <form action="/auth/register" method="post">
     <p>
-      <input type="text", name="username", placeholder="username">
+      <input type="text" name="username" placeholder="username">
     </p>
     <p>
-      <input type="password", name="password", placeholder="password">
+      <input type="password" name="password" placeholder="password">
+    </p>
+    <p>
+      <input type="text" name="displayName" placeholder="displayName">
     </p>
     <p>
       <input type="submit">
@@ -112,77 +153,25 @@ app.get('/auth/login', function(req,res){
   `;
   res.send(output);
 });
-
-passport.serializeUser(function(user, done) {
-  done(null, user.username);
-  //app의 session에 현재 접근하고 있는 사용자의 정보가
-  //user.username이 저장된다.
-  //사용자가 로그인 ->
+app.get('/auth/login', function(req, res){
+  var output = `
+  <h1>Login</h1>
+  <form action="/auth/login" method="post">
+    <p>
+      <input type="text" name="username" placeholder="username">
+    </p>
+    <p>
+      <input type="password" name="password" placeholder="password">
+    </p>
+    <p>
+      <input type="submit">
+    </p>
+  </form>
+  `;
+  res.send(output);
 });
-
-passport.deserializeUser(function(id, done) {
-  //지금 만약 X가 사용중 이라면
-  console.log('deserializeUser');
-  for (var i = 0; i<users.length; i++){
-    var user=users[i];
-    if(user.username === id){
-      return done(null, user);
-    }
-  }
-});
-
-
-////
-  passport.use(new LocalStrategy(
-    function(username, password, done) {
-      console.log('in Local');
-      var user_name = username;
-      var pwd = password;
-
-      for(var i = 0; i<users.length; i++){
-        var user = users[i];
-        if(user_name === users[i].username && pwd === users[i].password){
-          console.log('LocalStrategy');
-          done(null, user);
-        } else {
-          done(null, false); //null은 뭔가? 로그인 관련시 발생하는 에러 처리용
-        }
-      }
-      done(null, false);
-    }
-  ));
-  ////
-
-
-  app.post(
-    'auth/login',
-    passport.authenticate(
-      'local', {
-        successRedirect: '/welcome',
-        failureRedirect: '/auth/login/fail',
-        failureFlash: false
-      }
-    )
-  );
-
-// app.post('/auth/login', function(req, res){
-//
-//   var user_name = req.body.username;
-//   var pwd = md5(req.body.password);
-//
-//   for(var i = 0; i<users.length; i++){
-//     if(user_name === users[i].username && pwd === users[i].password){
-//       req.session.displayName = users[i].displayName;
-//       return req.session.save(function(){
-//         res.redirect('/welcome');
-//       });
-//       //이 return 부분 처리 개선이 필요하다.
-//     }
-//   }
-//   res.send('Invaild\n <a href="/auth/login">login</a>');
-// });
-
-
 app.listen(3003, function(){
-  console.log('Connected 3003 port');
+  console.log('Connected 3003 port!!!');
 });
+Contact GitHub API Training Shop Blog About
+© 2017 GitHub, Inc. Terms Privacy Security Status Help

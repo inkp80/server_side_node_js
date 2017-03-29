@@ -17,7 +17,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 //session을 passport에서 사용할 수 있어야 하므로, 기본적인 session 설정이 완료되어야 한다
 app.get('/count', function(req, res){
-ㅁ
+
   if(req.session.count){
     req.session.count++;
   } else {
